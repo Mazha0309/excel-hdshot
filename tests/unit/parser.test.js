@@ -56,3 +56,42 @@ test('parseCsv: 仅一个空引号字段的文件产生1行1空单元格', () =>
   assert.strictEqual(sheets[0].rows[0].cells.length, 1);
   assert.strictEqual(sheets[0].rows[0].cells[0].text, '');
 });
+
+test('parseXlsx: sheet 列表', async () => {
+  const { sheets } = await parser.parseXlsx(fixture('test.xlsx'));
+  assert.deepStrictEqual(sheets.map(s => s.name), ['样式测试', '空表', '纯数据']);
+});
+
+test('parseXlsx: 合并标题单元格样式', async () => {
+  const { sheets } = await parser.parseXlsx(fixture('test.xlsx'));
+  const cell = sheets[0].rows[0].cells[0];
+  assert.strictEqual(cell.text, '销售数据汇总');
+  assert.strictEqual(cell.rowspan, 1);
+  assert.strictEqual(cell.colspan, 4);
+  assert.strictEqual(cell.font.bold, true);
+  assert.strictEqual(cell.font.size, 16);
+  assert.strictEqual(cell.font.color, '#FFFFFF');
+  assert.strictEqual(cell.fill.color, '#4472C4');
+  assert.strictEqual(cell.align.h, 'center');
+  assert.strictEqual(cell.align.v, 'middle');
+  assert.strictEqual(sheets[0].rows[0].cells[1].hidden, true);
+});
+
+test('parseXlsx: 数字格式与日期文本', async () => {
+  const { sheets } = await parser.parseXlsx(fixture('test.xlsx'));
+  const row3 = sheets[0].rows[2];
+  assert.strictEqual(row3.cells[1].text, '1,234.50');
+  assert.strictEqual(row3.cells[3].text, '2026-08-01');
+});
+
+test('parseXlsx: 垂直合并与换行、行高列宽', async () => {
+  const { sheets } = await parser.parseXlsx(fixture('test.xlsx'));
+  const s = sheets[0];
+  assert.strictEqual(s.rows[4].cells[0].rowspan, 2);
+  assert.strictEqual(s.rows[4].cells[0].text, '合并两行');
+  assert.strictEqual(s.rows[5].cells[0].hidden, true);
+  assert.strictEqual(s.rows[3].cells[0].align.wrap, true);
+  assert.strictEqual(s.rows[0].height, 40);
+  assert.strictEqual(s.colWidths[0], 182);
+  assert.strictEqual(s.colWidths[3], 98);
+});
