@@ -40,3 +40,19 @@ test('parseCsv: tab 分隔自动识别', () => {
   assert.strictEqual(sheets[0].rows[0].cells[1].text, 'b');
   assert.strictEqual(sheets[0].rows[1].cells[1].text, '2');
 });
+
+test('parseCsv: 字段中间的引号按字面量处理（不吞行）', () => {
+  const buf = new TextEncoder().encode('a"b,c\nd,e\n');
+  const { sheets } = parser.parseCsv(buf, 'q.csv');
+  assert.strictEqual(sheets[0].rows.length, 2);
+  assert.deepStrictEqual(sheets[0].rows[0].cells.map(c => c.text), ['a"b', 'c']);
+  assert.deepStrictEqual(sheets[0].rows[1].cells.map(c => c.text), ['d', 'e']);
+});
+
+test('parseCsv: 仅一个空引号字段的文件产生1行1空单元格', () => {
+  const buf = new TextEncoder().encode('""');
+  const { sheets } = parser.parseCsv(buf, 'e.csv');
+  assert.strictEqual(sheets[0].rows.length, 1);
+  assert.strictEqual(sheets[0].rows[0].cells.length, 1);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, '');
+});

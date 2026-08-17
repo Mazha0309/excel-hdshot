@@ -281,6 +281,22 @@ test('parseCsv: tab 分隔自动识别', () => {
   assert.strictEqual(sheets[0].rows[0].cells[1].text, 'b');
   assert.strictEqual(sheets[0].rows[1].cells[1].text, '2');
 });
+
+test('parseCsv: 字段中间的引号按字面量处理（不吞行）', () => {
+  const buf = new TextEncoder().encode('a"b,c\nd,e\n');
+  const { sheets } = parser.parseCsv(buf, 'q.csv');
+  assert.strictEqual(sheets[0].rows.length, 2);
+  assert.deepStrictEqual(sheets[0].rows[0].cells.map(c => c.text), ['a"b', 'c']);
+  assert.deepStrictEqual(sheets[0].rows[1].cells.map(c => c.text), ['d', 'e']);
+});
+
+test('parseCsv: 仅一个空引号字段的文件产生1行1空单元格', () => {
+  const buf = new TextEncoder().encode('""');
+  const { sheets } = parser.parseCsv(buf, 'e.csv');
+  assert.strictEqual(sheets[0].rows.length, 1);
+  assert.strictEqual(sheets[0].rows[0].cells.length, 1);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, '');
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -319,26 +335,26 @@ Expected: FAIL — `Cannot find module '../../js/parser.js'`
   function parseCsvText(text) {
     const delim = detectDelimiter(text);
     const rows = [];
-    let row = [], field = '', inQuotes = false;
+    let row = [], field = '', inQuotes = false, content = false;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       if (inQuotes) {
         if (ch === '"') {
           if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
         } else {
-          field += ch;
+          field += ch; content = true;
         }
-      } else if (ch === '"') {
-        inQuotes = true;
+      } else if (ch === '"' && field === '') {
+        inQuotes = true; content = true;
       } else if (ch === delim) {
         row.push(field); field = '';
       } else if (ch === '\n') {
-        row.push(field); rows.push(row); row = []; field = '';
+        row.push(field); rows.push(row); row = []; field = ''; content = false;
       } else if (ch !== '\r') {
-        field += ch;
+        field += ch; content = true;
       }
     }
-    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    if (content || field !== '' || row.length) { row.push(field); rows.push(row); }
     return rows;
   }
 
@@ -369,7 +385,7 @@ Expected: FAIL — `Cannot find module '../../js/parser.js'`
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `node --test tests/unit/parser.test.js`
-Expected: PASS（4 个测试全过）
+Expected: PASS（6 个测试全过）
 
 - [ ] **Step 5: Commit**
 

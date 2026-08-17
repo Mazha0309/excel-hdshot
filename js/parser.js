@@ -26,26 +26,26 @@
   function parseCsvText(text) {
     const delim = detectDelimiter(text);
     const rows = [];
-    let row = [], field = '', inQuotes = false;
+    let row = [], field = '', inQuotes = false, content = false;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       if (inQuotes) {
         if (ch === '"') {
           if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
         } else {
-          field += ch;
+          field += ch; content = true;
         }
-      } else if (ch === '"') {
-        inQuotes = true;
+      } else if (ch === '"' && field === '') {
+        inQuotes = true; content = true;
       } else if (ch === delim) {
         row.push(field); field = '';
       } else if (ch === '\n') {
-        row.push(field); rows.push(row); row = []; field = '';
+        row.push(field); rows.push(row); row = []; field = ''; content = false;
       } else if (ch !== '\r') {
-        field += ch;
+        field += ch; content = true;
       }
     }
-    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    if (content || field !== '' || row.length) { row.push(field); rows.push(row); }
     return rows;
   }
 
