@@ -130,25 +130,37 @@
 
   function pad2(n) { return String(n).padStart(2, '0'); }
 
+  function isMinute(fmt, i) {
+    let j = i - 1;
+    while (j >= 0 && fmt[j] === ':') j--;
+    if (j >= 0 && fmt[j] === 'h') return true;
+    let k = i + 1;
+    while (k < fmt.length && fmt[k] === ':') k++;
+    if (k < fmt.length && fmt[k] === 's') return true;
+    return !/[yd]/i.test(fmt);
+  }
+
   function formatDateValue(d, fmt) {
-    const hasTime = /(h+|s+)/i.test(fmt);
+    const is12h = fmt.includes('AM/PM') || fmt.includes('A/P');
+    const hr = d.getUTCHours();
+    const hour = () => is12h ? (hr % 12 || 12) : hr;
     const tokens = [
-      ['yyyy', () => String(d.getFullYear())],
-      ['yy', () => String(d.getFullYear()).slice(-2)],
-      ['mmmm', () => MONTHS[d.getMonth()]],
-      ['mmm', () => MONTHS[d.getMonth()].slice(0, 3)],
-      ['mm', () => pad2(hasTime ? d.getMinutes() : d.getMonth() + 1)],
-      ['m', () => hasTime ? d.getMinutes() : d.getMonth() + 1],
-      ['dddd', () => DAYS[d.getDay()]],
-      ['ddd', () => DAYS[d.getDay()].slice(0, 3)],
-      ['dd', () => pad2(d.getDate())],
-      ['d', () => d.getDate()],
-      ['hh', () => pad2(d.getHours())],
-      ['h', () => d.getHours()],
-      ['ss', () => pad2(d.getSeconds())],
-      ['s', () => d.getSeconds()],
-      ['AM/PM', () => d.getHours() < 12 ? 'AM' : 'PM'],
-      ['A/P', () => d.getHours() < 12 ? 'A' : 'P']
+      ['yyyy', () => String(d.getUTCFullYear())],
+      ['yy', () => String(d.getUTCFullYear()).slice(-2)],
+      ['mmmm', () => MONTHS[d.getUTCMonth()]],
+      ['mmm', () => MONTHS[d.getUTCMonth()].slice(0, 3)],
+      ['mm', (i) => pad2(isMinute(fmt, i) ? d.getUTCMinutes() : d.getUTCMonth() + 1)],
+      ['m', (i) => isMinute(fmt, i) ? d.getUTCMinutes() : d.getUTCMonth() + 1],
+      ['dddd', () => DAYS[d.getUTCDay()]],
+      ['ddd', () => DAYS[d.getUTCDay()].slice(0, 3)],
+      ['dd', () => pad2(d.getUTCDate())],
+      ['d', () => d.getUTCDate()],
+      ['hh', () => pad2(hour())],
+      ['h', () => hour()],
+      ['ss', () => pad2(d.getUTCSeconds())],
+      ['s', () => d.getUTCSeconds()],
+      ['AM/PM', () => hr < 12 ? 'AM' : 'PM'],
+      ['A/P', () => hr < 12 ? 'A' : 'P']
     ];
     let out = '';
     let i = 0;
@@ -165,7 +177,7 @@
       }
       let matched = false;
       for (const [tok, fn] of tokens) {
-        if (fmt.startsWith(tok, i)) { out += fn(); i += tok.length; matched = true; break; }
+        if (fmt.startsWith(tok, i)) { out += fn(i); i += tok.length; matched = true; break; }
       }
       if (!matched) { out += ch; i++; }
     }
@@ -184,7 +196,7 @@
     const intPat = dot >= 0 ? pattern.slice(0, dot) : pattern;
     const decPat = dot >= 0 ? pattern.slice(dot + 1) : '';
     const grouping = intPat.includes(',');
-    const decPlaces = (decPat.match(/0/g) || []).length;
+    const decPlaces = (decPat.match(/[0#]/g) || []).length;
     const num = pct ? abs * 100 : abs;
     let str = num.toFixed(decPlaces);
     if (grouping) {
@@ -199,8 +211,13 @@
     if (v === null || v === undefined) return '';
     if (v instanceof Date) return formatDateValue(v, numFmt || 'yyyy-mm-dd');
     if (typeof v === 'number') return formatNumberValue(v, numFmt);
-    if (Array.isArray(v)) return v.map(r => (r && r.text) || '').join('');
-    if (v && typeof v === 'object' && v.error) return v.error;
+    if (v && typeof v === 'object') {
+      if (v.error) return v.error;
+      if (v.result !== undefined && v.result !== null) return formatCellValue(v.result, numFmt);
+      if (Array.isArray(v.richText)) return v.richText.map(r => (r && r.text) || '').join('');
+      if (v.text !== undefined) return String(v.text);
+      return String(v);
+    }
     return String(v);
   }
 
@@ -219,7 +236,7 @@
         merges.push({ r1: +m[2] - 1, c1: colToIndex(m[1]), r2: +m[4] - 1, c2: colToIndex(m[3]) });
       }
       const rowCount = ws.actualRowCount;
-      const colCount = ws.actualColumnCount;
+      const colCount = ws.columnCount;
       const rows = [];
       let cellCount = 0;
       for (let r = 1; r <= rowCount; r++) {

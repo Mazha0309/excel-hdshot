@@ -443,6 +443,48 @@ test('parseXlsx: 垂直合并与换行、行高列宽', async () => {
   assert.strictEqual(s.colWidths[0], 182);           // 26chars*7
   assert.strictEqual(s.colWidths[3], 98);            // 14chars*7
 });
+
+test('parseXlsx: 列间空档不丢数据', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('gap');
+  ws.getCell('A1').value = 'left';
+  ws.getCell('Z1').value = 'far right';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, 'left');
+  assert.strictEqual(sheets[0].rows[0].cells[25].text, 'far right');
+});
+
+test('parseXlsx: 公式/富文本/超链接取值', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('objects');
+  ws.getCell('A1').value = { formula: 'B1+C1', result: 7 };
+  ws.getCell('B1').value = 3;
+  ws.getCell('C1').value = 4;
+  ws.getCell('A2').value = { richText: [{ text: '红' }, { text: '蓝' }] };
+  ws.getCell('A3').value = { text: '链接', hyperlink: 'https://example.com' };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, '7');
+  assert.strictEqual(sheets[0].rows[1].cells[0].text, '红蓝');
+  assert.strictEqual(sheets[0].rows[2].cells[0].text, '链接');
+});
+
+test('parseXlsx: 日期时间与12小时制（UTC无关）', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('dt');
+  ws.getCell('A1').value = new Date(Date.UTC(2026, 7, 1, 22, 30, 0));
+  ws.getCell('A1').numFmt = 'yyyy-mm-dd hh:mm:ss';
+  ws.getCell('A2').value = new Date(Date.UTC(2026, 7, 1, 22, 0, 0));
+  ws.getCell('A2').numFmt = 'h:mm AM/PM';
+  ws.getCell('A3').value = new Date(Date.UTC(2026, 7, 1, 0, 30, 45));
+  ws.getCell('A3').numFmt = 'mm:ss';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, '2026-08-01 22:30:00');
+  assert.strictEqual(sheets[0].rows[1].cells[0].text, '10:00 PM');
+  assert.strictEqual(sheets[0].rows[2].cells[0].text, '30:45');
+});
 ```
 
 - [ ] **Step 2: 运行测试确认新测试失败**
@@ -522,25 +564,39 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
 
   function pad2(n) { return String(n).padStart(2, '0'); }
 
+  // m/mm 判定的位置启发式：分钟=前面是 h（可隔 ':'）或后面是 s（可隔 ':'），或纯时间格式（无 y/d）。
+  // 注意：查找相邻字符时要跳过 ':' 分隔符，否则 'yyyy-mm-dd hh:mm:ss' 中 hh: 后的 mm 会被误判为月份。
+  function isMinute(fmt, i) {
+    let j = i - 1;
+    while (j >= 0 && fmt[j] === ':') j--;
+    if (j >= 0 && fmt[j] === 'h') return true;
+    let k = i + 1;
+    while (k < fmt.length && fmt[k] === ':') k++;
+    if (k < fmt.length && fmt[k] === 's') return true;
+    return !/[yd]/i.test(fmt);
+  }
+
   function formatDateValue(d, fmt) {
-    const hasTime = /(h+|s+)/i.test(fmt);
+    const is12h = fmt.includes('AM/PM') || fmt.includes('A/P');
+    const hr = d.getUTCHours();
+    const hour = () => is12h ? (hr % 12 || 12) : hr;
     const tokens = [
-      ['yyyy', () => String(d.getFullYear())],
-      ['yy', () => String(d.getFullYear()).slice(-2)],
-      ['mmmm', () => MONTHS[d.getMonth()]],
-      ['mmm', () => MONTHS[d.getMonth()].slice(0, 3)],
-      ['mm', () => pad2(hasTime ? d.getMinutes() : d.getMonth() + 1)],
-      ['m', () => hasTime ? d.getMinutes() : d.getMonth() + 1],
-      ['dddd', () => DAYS[d.getDay()]],
-      ['ddd', () => DAYS[d.getDay()].slice(0, 3)],
-      ['dd', () => pad2(d.getDate())],
-      ['d', () => d.getDate()],
-      ['hh', () => pad2(d.getHours())],
-      ['h', () => d.getHours()],
-      ['ss', () => pad2(d.getSeconds())],
-      ['s', () => d.getSeconds()],
-      ['AM/PM', () => d.getHours() < 12 ? 'AM' : 'PM'],
-      ['A/P', () => d.getHours() < 12 ? 'A' : 'P']
+      ['yyyy', () => String(d.getUTCFullYear())],
+      ['yy', () => String(d.getUTCFullYear()).slice(-2)],
+      ['mmmm', () => MONTHS[d.getUTCMonth()]],
+      ['mmm', () => MONTHS[d.getUTCMonth()].slice(0, 3)],
+      ['mm', (i) => pad2(isMinute(fmt, i) ? d.getUTCMinutes() : d.getUTCMonth() + 1)],
+      ['m', (i) => isMinute(fmt, i) ? d.getUTCMinutes() : d.getUTCMonth() + 1],
+      ['dddd', () => DAYS[d.getUTCDay()]],
+      ['ddd', () => DAYS[d.getUTCDay()].slice(0, 3)],
+      ['dd', () => pad2(d.getUTCDate())],
+      ['d', () => d.getUTCDate()],
+      ['hh', () => pad2(hour())],
+      ['h', () => hour()],
+      ['ss', () => pad2(d.getUTCSeconds())],
+      ['s', () => d.getUTCSeconds()],
+      ['AM/PM', () => hr < 12 ? 'AM' : 'PM'],
+      ['A/P', () => hr < 12 ? 'A' : 'P']
     ];
     let out = '';
     let i = 0;
@@ -557,7 +613,7 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
       }
       let matched = false;
       for (const [tok, fn] of tokens) {
-        if (fmt.startsWith(tok, i)) { out += fn(); i += tok.length; matched = true; break; }
+        if (fmt.startsWith(tok, i)) { out += fn(i); i += tok.length; matched = true; break; }
       }
       if (!matched) { out += ch; i++; }
     }
@@ -576,7 +632,7 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
     const intPat = dot >= 0 ? pattern.slice(0, dot) : pattern;
     const decPat = dot >= 0 ? pattern.slice(dot + 1) : '';
     const grouping = intPat.includes(',');
-    const decPlaces = (decPat.match(/0/g) || []).length;
+    const decPlaces = (decPat.match(/[0#]/g) || []).length;
     const num = pct ? abs * 100 : abs;
     let str = num.toFixed(decPlaces);
     if (grouping) {
@@ -591,8 +647,13 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
     if (v === null || v === undefined) return '';
     if (v instanceof Date) return formatDateValue(v, numFmt || 'yyyy-mm-dd');
     if (typeof v === 'number') return formatNumberValue(v, numFmt);
-    if (Array.isArray(v)) return v.map(r => (r && r.text) || '').join('');
-    if (v && typeof v === 'object' && v.error) return v.error;
+    if (v && typeof v === 'object') {
+      if (v.error) return v.error;
+      if (v.result !== undefined && v.result !== null) return formatCellValue(v.result, numFmt);
+      if (Array.isArray(v.richText)) return v.richText.map(r => (r && r.text) || '').join('');
+      if (v.text !== undefined) return String(v.text);
+      return String(v);
+    }
     return String(v);
   }
 
@@ -611,7 +672,7 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
         merges.push({ r1: +m[2] - 1, c1: colToIndex(m[1]), r2: +m[4] - 1, c2: colToIndex(m[3]) });
       }
       const rowCount = ws.actualRowCount;
-      const colCount = ws.actualColumnCount;
+      const colCount = ws.columnCount;
       const rows = [];
       let cellCount = 0;
       for (let r = 1; r <= rowCount; r++) {
@@ -653,7 +714,7 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
 - [ ] **Step 4: 运行测试确认全部通过**
 
 Run: `node --test tests/unit/parser.test.js`
-Expected: PASS（8 个测试全过）
+Expected: PASS（13 个测试全过）
 
 - [ ] **Step 5: Commit**
 

@@ -3,6 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const parser = require('../../js/parser.js');
+const ExcelJS = require('exceljs');
 
 const fixture = (n) => fs.readFileSync(path.join(__dirname, '..', 'fixtures', n));
 
@@ -94,4 +95,46 @@ test('parseXlsx: 垂直合并与换行、行高列宽', async () => {
   assert.strictEqual(s.rows[0].height, 40);
   assert.strictEqual(s.colWidths[0], 182);
   assert.strictEqual(s.colWidths[3], 98);
+});
+
+test('parseXlsx: 列间空档不丢数据', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('gap');
+  ws.getCell('A1').value = 'left';
+  ws.getCell('Z1').value = 'far right';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, 'left');
+  assert.strictEqual(sheets[0].rows[0].cells[25].text, 'far right');
+});
+
+test('parseXlsx: 公式/富文本/超链接取值', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('objects');
+  ws.getCell('A1').value = { formula: 'B1+C1', result: 7 };
+  ws.getCell('B1').value = 3;
+  ws.getCell('C1').value = 4;
+  ws.getCell('A2').value = { richText: [{ text: '红' }, { text: '蓝' }] };
+  ws.getCell('A3').value = { text: '链接', hyperlink: 'https://example.com' };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, '7');
+  assert.strictEqual(sheets[0].rows[1].cells[0].text, '红蓝');
+  assert.strictEqual(sheets[0].rows[2].cells[0].text, '链接');
+});
+
+test('parseXlsx: 日期时间与12小时制（UTC无关）', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('dt');
+  ws.getCell('A1').value = new Date(Date.UTC(2026, 7, 1, 22, 30, 0));
+  ws.getCell('A1').numFmt = 'yyyy-mm-dd hh:mm:ss';
+  ws.getCell('A2').value = new Date(Date.UTC(2026, 7, 1, 22, 0, 0));
+  ws.getCell('A2').numFmt = 'h:mm AM/PM';
+  ws.getCell('A3').value = new Date(Date.UTC(2026, 7, 1, 0, 30, 45));
+  ws.getCell('A3').numFmt = 'mm:ss';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].text, '2026-08-01 22:30:00');
+  assert.strictEqual(sheets[0].rows[1].cells[0].text, '10:00 PM');
+  assert.strictEqual(sheets[0].rows[2].cells[0].text, '30:45');
 });
