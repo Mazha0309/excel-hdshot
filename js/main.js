@@ -41,6 +41,7 @@
       toast('该工作表无数据', true);
       preview.innerHTML = '';
       state.tableEl = null;
+      dimsInfo.textContent = '';
       return;
     }
     preview.innerHTML = TableRenderer.renderSheet(sheet, { allBorders: state.isCsv });
@@ -70,12 +71,16 @@
       workspace.hidden = false;
       renderCurrentSheet();
     } catch (e) {
+      console.error('解析失败', e);
       toast('解析失败：文件可能损坏或为加密文件', true);
     }
   }
 
   exportBtn.addEventListener('click', async function () {
-    if (!state.tableEl) return;
+    if (!state.tableEl) {
+      toast('请先上传并选择有数据的表格', true);
+      return;
+    }
     try {
       exportBtn.disabled = true;
       var o = currentOpts();

@@ -129,3 +129,59 @@ test('点击上传区打开文件选择器并上传', async ({ page }) => {
   await chooser.setFiles(xlsx);
   await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
 });
+
+test('非法文件类型提示且不显示工作区', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', path.join(__dirname, '..', 'fixtures', 'bad.txt'));
+  await expect(page.locator('#toast')).toContainText('请选择 .xlsx 或 .csv 文件');
+  await expect(page.locator('#workspace')).toBeHidden();
+});
+
+test('损坏xlsx解析失败提示', async ({ page }) => {
+  const badPath = path.join(__dirname, '..', 'fixtures', 'corrupt.xlsx');
+  fs.writeFileSync(badPath, 'this is not a valid xlsx file');
+  try {
+    await page.goto(pageUrl);
+    await page.setInputFiles('#file-input', badPath);
+    await expect(page.locator('#toast')).toContainText('解析失败');
+  } finally {
+    fs.unlinkSync(badPath);
+  }
+});
+
+test('空表提示', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.selectOption('#sheet-select', '1');
+  await expect(page.locator('#toast')).toContainText('该工作表无数据');
+  await expect(page.locator('#dims-info')).toHaveText('');
+});
+
+test('单sheet文件禁用手表选择', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', csv);
+  await expect(page.locator('#sheet-select')).toBeDisabled();
+});
+
+test('无表格时导出按钮提示', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.selectOption('#sheet-select', '1');
+  await page.click('#export-btn');
+  await expect(page.locator('#toast')).toContainText('请先上传并选择有数据的表格');
+});
+
+test('真实拖拽上传触发预览', async ({ page }) => {
+  await page.goto(pageUrl);
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  const bytes = fs.readFileSync(xlsx);
+  const filePayload = await page.evaluateHandle(
+    ({ b, name }) => new File([new Uint8Array(b)], name, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }),
+    { b: Array.from(bytes), name: 'test.xlsx' }
+  );
+  await dataTransfer.evaluate((dt, file) => dt.items.add(file), filePayload);
+  await page.dispatchEvent('#drop-zone', 'drop', { dataTransfer });
+  await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
+});
