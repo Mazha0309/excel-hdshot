@@ -8,6 +8,7 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
   fs.mkdirSync(outDir, { recursive: true });
 
   const wb = new ExcelJS.Workbook();
+  wb.created = wb.modified = new Date(Date.UTC(2026, 0, 1));
 
   const ws = wb.addWorksheet('样式测试');
   ws.mergeCells('A1:D1');
@@ -32,7 +33,7 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
   ws.getCell('B3').value = 1234.5;
   ws.getCell('B3').numFmt = '#,##0.00';
   ws.getCell('C3').value = 3.2;
-  ws.getCell('D3').value = new Date(2026, 7, 1);
+  ws.getCell('D3').value = new Date(Date.UTC(2026, 7, 1));
   ws.getCell('D3').numFmt = 'yyyy-mm-dd';
 
   ws.getCell('A4').value = '香蕉（较长备注说明文本测试换行显示）';
@@ -41,7 +42,7 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
   ws.getCell('B4').font = { italic: true };
   ws.getCell('C4').value = 5.5;
   ws.getCell('C4').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
-  ws.getCell('D4').value = new Date(2026, 7, 2);
+  ws.getCell('D4').value = new Date(Date.UTC(2026, 7, 2));
   ws.getCell('D4').numFmt = 'yyyy-mm-dd';
   ws.getRow(4).height = 40;
 
@@ -50,11 +51,11 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
   ws.getCell('A5').alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getCell('B5').value = 7;
   ws.getCell('C5').value = 1.5;
-  ws.getCell('D5').value = new Date(2026, 7, 3);
+  ws.getCell('D5').value = new Date(Date.UTC(2026, 7, 3));
   ws.getCell('D5').numFmt = 'yyyy-mm-dd';
   ws.getCell('B6').value = 8;
   ws.getCell('C6').value = 2.5;
-  ws.getCell('D6').value = new Date(2026, 7, 4);
+  ws.getCell('D6').value = new Date(Date.UTC(2026, 7, 4));
   ws.getCell('D6').numFmt = 'yyyy-mm-dd';
   ws.getCell('B5').border = { top: { style: 'dashed' } };
 
@@ -65,11 +66,11 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
 
   wb.addWorksheet('空表');
 
-  const ws3 = wb.addWorksheet('纯数据');
-  ws3.getCell('A1').value = '姓名';
-  ws3.getCell('B1').value = '年龄';
-  ws3.getCell('A2').value = '张三';
-  ws3.getCell('B2').value = 28;
+  const wsPlain = wb.addWorksheet('纯数据');
+  wsPlain.getCell('A1').value = '姓名';
+  wsPlain.getCell('B1').value = '年龄';
+  wsPlain.getCell('A2').value = '张三';
+  wsPlain.getCell('B2').value = 28;
 
   await wb.xlsx.writeFile(path.join(outDir, 'test.xlsx'));
 
