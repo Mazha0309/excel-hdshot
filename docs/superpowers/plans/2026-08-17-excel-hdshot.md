@@ -499,10 +499,89 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
     return false;
   }
 
+  // 注意：ExcelJS 4.4.0 的 cell.text 不按 numFmt 格式化（数字返回原始值、日期返回 Date.toString）。
+  // 因此 parser 自带小型 numFmt 格式化器（已验证：B3 '#,##0.00'→'1,234.50'，D3 'yyyy-mm-dd'→'2026-08-01'）。
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function formatDateValue(d, fmt) {
+    const hasTime = /(h+|s+)/i.test(fmt);
+    const tokens = [
+      ['yyyy', () => String(d.getFullYear())],
+      ['yy', () => String(d.getFullYear()).slice(-2)],
+      ['mmmm', () => MONTHS[d.getMonth()]],
+      ['mmm', () => MONTHS[d.getMonth()].slice(0, 3)],
+      ['mm', () => pad2(hasTime ? d.getMinutes() : d.getMonth() + 1)],
+      ['m', () => hasTime ? d.getMinutes() : d.getMonth() + 1],
+      ['dddd', () => DAYS[d.getDay()]],
+      ['ddd', () => DAYS[d.getDay()].slice(0, 3)],
+      ['dd', () => pad2(d.getDate())],
+      ['d', () => d.getDate()],
+      ['hh', () => pad2(d.getHours())],
+      ['h', () => d.getHours()],
+      ['ss', () => pad2(d.getSeconds())],
+      ['s', () => d.getSeconds()],
+      ['AM/PM', () => d.getHours() < 12 ? 'AM' : 'PM'],
+      ['A/P', () => d.getHours() < 12 ? 'A' : 'P']
+    ];
+    let out = '';
+    let i = 0;
+    while (i < fmt.length) {
+      const ch = fmt[i];
+      if (ch === '"') {
+        const end = fmt.indexOf('"', i + 1);
+        if (end > i) { out += fmt.slice(i + 1, end); i = end + 1; continue; }
+        out += ch; i++; continue;
+      }
+      if (ch === '\\') {
+        if (i + 1 < fmt.length) out += fmt[i + 1];
+        i += 2; continue;
+      }
+      let matched = false;
+      for (const [tok, fn] of tokens) {
+        if (fmt.startsWith(tok, i)) { out += fn(); i += tok.length; matched = true; break; }
+      }
+      if (!matched) { out += ch; i++; }
+    }
+    return out;
+  }
+
+  function formatNumberValue(v, fmt) {
+    if (fmt == null || fmt === '' || fmt === 'General') return String(v);
+    const sections = String(fmt).split(';');
+    const isNeg = v < 0;
+    const section = isNeg ? (sections[1] || sections[0]) : sections[0];
+    const abs = Math.abs(v);
+    const pct = section.includes('%');
+    const pattern = section.replace(/%/g, '');
+    const dot = pattern.indexOf('.');
+    const intPat = dot >= 0 ? pattern.slice(0, dot) : pattern;
+    const decPat = dot >= 0 ? pattern.slice(dot + 1) : '';
+    const grouping = intPat.includes(',');
+    const decPlaces = (decPat.match(/0/g) || []).length;
+    const num = pct ? abs * 100 : abs;
+    let str = num.toFixed(decPlaces);
+    if (grouping) {
+      const parts = str.split('.');
+      str = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (parts[1] !== undefined ? '.' + parts[1] : '');
+    }
+    if (pct) str += '%';
+    return (isNeg ? '-' : '') + str;
+  }
+
+  function formatCellValue(v, numFmt) {
+    if (v === null || v === undefined) return '';
+    if (v instanceof Date) return formatDateValue(v, numFmt || 'yyyy-mm-dd');
+    if (typeof v === 'number') return formatNumberValue(v, numFmt);
+    if (Array.isArray(v)) return v.map(r => (r && r.text) || '').join('');
+    if (v && typeof v === 'object' && v.error) return v.error;
+    return String(v);
+  }
+
   function textOf(cell) {
-    const t = cell.text;
-    if (t === undefined || t === null) return String(cell.value == null ? '' : cell.value);
-    return t;
+    return formatCellValue(cell.value, cell.numFmt);
   }
 
   async function parseXlsx(buf) {
