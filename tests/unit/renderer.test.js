@@ -146,3 +146,23 @@ test('字体名引号消毒', () => {
   const html = renderer.renderSheet(fSheet);
   assert.ok(html.includes("font-family:'BadName',sans-serif"));
 });
+
+test('单元格输出 data-r/data-c 定位属性', () => {
+  const html = renderer.renderSheet(sheet);
+  assert.ok(html.includes('data-r="0" data-c="0"'));
+});
+
+test('空列占位格输出 data-c', () => {
+  const sparseSheet = {
+    name: 's',
+    rows: [{ height: null, cells: [
+      { text: 'A', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null },
+      null,
+      { text: 'B', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null }
+    ] }],
+    colWidths: [100, 100, 100],
+    cellCount: 2
+  };
+  const html = renderer.renderSheet(sparseSheet);
+  assert.ok(html.includes('<td data-c="1"></td>'));
+});

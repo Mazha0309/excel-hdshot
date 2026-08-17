@@ -1052,6 +1052,26 @@ test('字体名引号消毒', () => {
   const html = renderer.renderSheet(fSheet);
   assert.ok(html.includes("font-family:'BadName',sans-serif"));
 });
+
+test('单元格输出 data-r/data-c 定位属性', () => {
+  const html = renderer.renderSheet(sheet);
+  assert.ok(html.includes('data-r="0" data-c="0"'));
+});
+
+test('空列占位格输出 data-c', () => {
+  const sparseSheet = {
+    name: 's',
+    rows: [{ height: null, cells: [
+      { text: 'A', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null },
+      null,
+      { text: 'B', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null }
+    ] }],
+    colWidths: [100, 100, 100],
+    cellCount: 2
+  };
+  const html = renderer.renderSheet(sparseSheet);
+  assert.ok(html.includes('<td data-c="1"></td>'));
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -1095,7 +1115,7 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
     return sideSpec.color ? st + ' ' + sideSpec.color : st;
   }
 
-  function renderCell(cell, opts) {
+  function renderCell(cell, opts, r, c) {
     const s = {};
     const f = cell.font || DEFAULT_FONT;
     if (f.name) s.fontFamily = "'" + f.name.replace(/['"]/g, '') + "',sans-serif";
@@ -1125,7 +1145,7 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
       .filter(k => cell[k] > 1)
       .map(k => ' ' + k + '="' + cell[k] + '"')
       .join('');
-    return '<td' + attrs + ' style="' + styleString(s) + '">' + esc(cell.text) + '</td>';
+    return '<td' + attrs + ' data-r="' + r + '" data-c="' + c + '" style="' + styleString(s) + '">' + esc(cell.text) + '</td>';
   }
 
   function renderSheet(sheet, opts) {
@@ -1140,12 +1160,14 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
       html += '<colgroup>' + (sheet.colWidths || []).map(w => w ? '<col style="width:' + w + 'px">' : '<col>').join('') + '</colgroup>';
     }
     html += '<tbody>';
-    for (const row of sheet.rows) {
+    for (let ri = 0; ri < sheet.rows.length; ri++) {
+      const row = sheet.rows[ri];
       html += '<tr' + (row.height ? ' style="height:' + row.height + 'px"' : '') + '>';
-      for (const cell of row.cells) {
-        if (cell === null) { html += '<td></td>'; continue; }
+      for (let ci = 0; ci < row.cells.length; ci++) {
+        const cell = row.cells[ci];
+        if (cell === null) { html += '<td data-c="' + ci + '"></td>'; continue; }
         if (cell.hidden) continue;
-        html += renderCell(cell, opts);
+        html += renderCell(cell, opts, ri, ci);
       }
       html += '</tr>';
     }
@@ -1222,6 +1244,14 @@ git commit -m "feat: 模型转HTML表格（内联样式/合并/转义/边框映�
         <label>圆角
           <input type="number" id="radius-input" value="0" min="0" max="60"> px
         </label>
+        <span id="cell-edit" hidden>
+          <label>列 <b id="col-label">A</b> 宽
+            <input type="number" id="col-width-input" min="1" max="500"> px
+          </label>
+          <label>行 <b id="row-label">1</b> 高
+            <input type="number" id="row-height-input" min="1" max="300"> px
+          </label>
+        </span>
         <button id="export-btn">导出 PNG</button>
         <span id="dims-info"></span>
       </div>
@@ -1323,6 +1353,9 @@ main { padding: 16px 32px 40px; }
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.err { background: #d83931; }
+#cell-edit label { display: inline-flex; align-items: center; gap: 4px; }
+#cell-edit b { font-weight: 600; }
+#preview td.hs-selected { outline: 2px solid #3370ff; outline-offset: -2px; }
 ```
 
 - [ ] **Step 3: 浏览器打开冒烟验证**
@@ -1599,6 +1632,60 @@ test('CSV 上传渲染', async ({ page }) => {
 
 （文件顶部补充 `const fs = require('fs');`）
 
+追加（所见即所得 + 点击编辑列宽/行高）：
+
+```js
+test('预览展示白边/背景/圆角（所见即所得）', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.fill('#margin-input', '24');
+  await page.locator('#margin-input').dispatchEvent('change');
+  await page.selectOption('#bg-select', '#ffffff');
+  await page.fill('#radius-input', '12');
+  await page.locator('#radius-input').dispatchEvent('change');
+  const style = await page.locator('#preview .hs-wrap').getAttribute('style');
+  expect(style).toContain('padding:24px');
+  expect(style).toContain('border-radius:12px');
+  const dims = await page.locator('#dims-info').textContent();
+  expect(dims).not.toBe('');
+});
+
+test('点击单元格编辑列宽', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.locator('#preview td[data-r="2"][data-c="1"]').click();
+  await expect(page.locator('#cell-edit')).toBeVisible();
+  await expect(page.locator('#col-label')).toHaveText('B');
+  await expect(page.locator('#row-label')).toHaveText('3');
+  await page.fill('#col-width-input', '200');
+  await page.locator('#col-width-input').dispatchEvent('change');
+  const colStyle = await page.locator('#preview col').nth(1).getAttribute('style');
+  expect(colStyle).toContain('width:200px');
+  const selStillThere = await page.locator('#preview td.hs-selected').count();
+  expect(selStillThere).toBe(1);
+});
+
+test('点击单元格编辑行高', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.locator('#preview td[data-r="0"][data-c="0"]').click();
+  await page.fill('#row-height-input', '60');
+  await page.locator('#row-height-input').dispatchEvent('change');
+  const trStyle = await page.locator('#preview tr').first().getAttribute('style');
+  expect(trStyle).toContain('height:60px');
+});
+
+test('CSV上传后编辑列宽自动回填默认', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', csv);
+  await page.locator('#preview td[data-c="0"]').first().click();
+  await page.fill('#col-width-input', '150');
+  await page.locator('#col-width-input').dispatchEvent('change');
+  const colStyle = await page.locator('#preview col').first().getAttribute('style');
+  expect(colStyle).toContain('width:150px');
+});
+```
+
 - [ ] **Step 2: 运行确认失败**
 
 Run: `npx playwright test tests/e2e/hdshot.spec.js --reporter=line`
@@ -1613,8 +1700,21 @@ Expected: 新增 3 个测试 FAIL（上传后 workspace 不显示）
   var sheetSelect = $('sheet-select'), scaleSelect = $('scale-select'), marginInput = $('margin-input');
   var bgSelect = $('bg-select'), radiusInput = $('radius-input'), exportBtn = $('export-btn');
   var preview = $('preview'), dimsInfo = $('dims-info'), toastEl = $('toast');
+  var colLabel = $('col-label'), rowLabel = $('row-label');
+  var colWidthInput = $('col-width-input'), rowHeightInput = $('row-height-input');
+  var cellEdit = $('cell-edit');
 
-  var state = { sheets: null, tableEl: null, fileName: 'sheet', isCsv: false };
+  var state = { sheets: null, tableEl: null, fileName: 'sheet', isCsv: false, sel: null };
+
+  function columnName(i) {
+    var s = '';
+    i++;
+    while (i > 0) {
+      s = String.fromCharCode(65 + ((i - 1) % 26)) + s;
+      i = Math.floor((i - 1) / 26);
+    }
+    return s;
+  }
 
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1644,17 +1744,55 @@ Expected: 新增 3 个测试 FAIL（上传后 workspace 不显示）
     dimsInfo.textContent = w + ' × ' + h + ' px';
   }
 
+  function previewHtml(sheet) {
+    var o = currentOpts();
+    return '<div class="hs-wrap" style="display:inline-block;padding:' + o.margin + 'px;background:' +
+      o.background + ';border-radius:' + o.radius + 'px;overflow:hidden">' +
+      TableRenderer.renderSheet(sheet, { allBorders: state.isCsv }) + '</div>';
+  }
+
   function renderCurrentSheet() {
     var sheet = state.sheets[+sheetSelect.value];
     if (!sheet.rows.length) {
       toast('该工作表无数据', true);
       preview.innerHTML = '';
       state.tableEl = null;
+      dimsInfo.textContent = '';
+      clearSelection();
       return;
     }
-    preview.innerHTML = TableRenderer.renderSheet(sheet, { allBorders: state.isCsv });
-    state.tableEl = preview.firstElementChild;
+    preview.innerHTML = previewHtml(sheet);
+    state.tableEl = preview.querySelector('table');
+    applyHighlight();
     updateDims();
+  }
+
+  function setSelection(sel) {
+    state.sel = sel;
+    var sheet = state.sheets[+sheetSelect.value];
+    colLabel.textContent = columnName(sel.c);
+    rowLabel.textContent = sel.r + 1;
+    colWidthInput.value = sheet.colWidths[sel.c] || '';
+    rowHeightInput.value = sheet.rows[sel.r].height || '';
+    cellEdit.hidden = false;
+    applyHighlight();
+  }
+
+  function applyHighlight() {
+    if (!state.sel || !state.tableEl) return;
+    var prev = state.tableEl.querySelector('.hs-selected');
+    if (prev) prev.classList.remove('hs-selected');
+    var td = state.tableEl.querySelector('td[data-r="' + state.sel.r + '"][data-c="' + state.sel.c + '"]');
+    if (td) td.classList.add('hs-selected');
+  }
+
+  function clearSelection() {
+    state.sel = null;
+    cellEdit.hidden = true;
+    if (state.tableEl) {
+      var prev = state.tableEl.querySelector('.hs-selected');
+      if (prev) prev.classList.remove('hs-selected');
+    }
   }
 
   async function handleFile(file) {
@@ -1688,6 +1826,8 @@ Expected: 新增 3 个测试 FAIL（上传后 workspace 不显示）
     try {
       exportBtn.disabled = true;
       var o = currentOpts();
+      var selTd = state.tableEl.querySelector('.hs-selected');
+      if (selTd) selTd.classList.remove('hs-selected');
       var res = await Exporter.exportPng(state.tableEl, o);
       var a = document.createElement('a');
       a.href = URL.createObjectURL(res.blob);
@@ -1695,6 +1835,7 @@ Expected: 新增 3 个测试 FAIL（上传后 workspace 不显示）
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
       toast('已导出 ' + res.width + '×' + res.height + ' PNG');
+      applyHighlight();
     } catch (e) {
       toast(e.message, true);
     } finally {
@@ -1711,9 +1852,45 @@ Expected: 新增 3 个测试 FAIL（上传后 workspace 不显示）
     dropZone.classList.remove('over');
     handleFile(e.dataTransfer.files[0]);
   });
-  sheetSelect.addEventListener('change', renderCurrentSheet);
-  [scaleSelect, marginInput, bgSelect, radiusInput].forEach(function (el) {
-    el.addEventListener('change', updateDims);
+  sheetSelect.addEventListener('change', function () { clearSelection(); renderCurrentSheet(); });
+  scaleSelect.addEventListener('change', updateDims);
+  [marginInput, bgSelect, radiusInput].forEach(function (el) {
+    el.addEventListener('change', function () { if (state.tableEl) renderCurrentSheet(); });
+  });
+
+  preview.addEventListener('click', function (e) {
+    var td = e.target.closest('td');
+    if (!td) { clearSelection(); return; }
+    var r = td.dataset.r, c = td.dataset.c;
+    if (r === undefined) {
+      var tr = td.parentElement;
+      r = Array.prototype.indexOf.call(tr.parentElement.children, tr);
+    }
+    setSelection({ r: +r, c: +c });
+  });
+
+  colWidthInput.addEventListener('change', function () {
+    if (!state.sel) return;
+    var v = +this.value;
+    if (!(v > 0)) return;
+    var sheet = state.sheets[+sheetSelect.value];
+    if (!sheet.colWidths.length) {
+      sheet.colWidths = new Array(state.sel.c + 1).fill(59);
+    } else if (sheet.colWidths.length <= state.sel.c) {
+      var old = sheet.colWidths;
+      sheet.colWidths = new Array(state.sel.c + 1).fill(59);
+      for (var i = 0; i < old.length; i++) if (old[i]) sheet.colWidths[i] = old[i];
+    }
+    sheet.colWidths[state.sel.c] = v;
+    renderCurrentSheet();
+  });
+
+  rowHeightInput.addEventListener('change', function () {
+    if (!state.sel) return;
+    var v = +this.value;
+    if (!(v > 0)) return;
+    state.sheets[+sheetSelect.value].rows[state.sel.r].height = v;
+    renderCurrentSheet();
   });
 })();
 ```

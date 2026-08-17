@@ -31,7 +31,7 @@
     return sideSpec.color ? st + ' ' + sideSpec.color : st;
   }
 
-  function renderCell(cell, opts) {
+  function renderCell(cell, opts, r, c) {
     const s = {};
     const f = cell.font || DEFAULT_FONT;
     if (f.name) s.fontFamily = "'" + f.name.replace(/['"]/g, '') + "',sans-serif";
@@ -61,7 +61,7 @@
       .filter(k => cell[k] > 1)
       .map(k => ' ' + k + '="' + cell[k] + '"')
       .join('');
-    return '<td' + attrs + ' style="' + styleString(s) + '">' + esc(cell.text) + '</td>';
+    return '<td' + attrs + ' data-r="' + r + '" data-c="' + c + '" style="' + styleString(s) + '">' + esc(cell.text) + '</td>';
   }
 
   function renderSheet(sheet, opts) {
@@ -76,12 +76,14 @@
       html += '<colgroup>' + (sheet.colWidths || []).map(w => w ? '<col style="width:' + w + 'px">' : '<col>').join('') + '</colgroup>';
     }
     html += '<tbody>';
-    for (const row of sheet.rows) {
+    for (let ri = 0; ri < sheet.rows.length; ri++) {
+      const row = sheet.rows[ri];
       html += '<tr' + (row.height ? ' style="height:' + row.height + 'px"' : '') + '>';
-      for (const cell of row.cells) {
-        if (cell === null) { html += '<td></td>'; continue; }
+      for (let ci = 0; ci < row.cells.length; ci++) {
+        const cell = row.cells[ci];
+        if (cell === null) { html += '<td data-c="' + ci + '"></td>'; continue; }
         if (cell.hidden) continue;
-        html += renderCell(cell, opts);
+        html += renderCell(cell, opts, ri, ci);
       }
       html += '</tr>';
     }

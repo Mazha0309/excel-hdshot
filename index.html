@@ -42,6 +42,14 @@
         <label>圆角
           <input type="number" id="radius-input" value="0" min="0" max="60"> px
         </label>
+        <span id="cell-edit" hidden>
+          <label>列 <b id="col-label">A</b> 宽
+            <input type="number" id="col-width-input" min="1" max="500"> px
+          </label>
+          <label>行 <b id="row-label">1</b> 高
+            <input type="number" id="row-height-input" min="1" max="300"> px
+          </label>
+        </span>
         <button id="export-btn">导出 PNG</button>
         <span id="dims-info"></span>
       </div>

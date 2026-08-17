@@ -187,3 +187,53 @@ test('主题色标题背景还原（theme+tint）', async ({ page }) => {
   const style = await page.locator('#preview td').first().getAttribute('style');
   expect(style).toContain('background:#8FAADC');
 });
+
+test('预览展示白边/背景/圆角（所见即所得）', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.fill('#margin-input', '24');
+  await page.locator('#margin-input').dispatchEvent('change');
+  await page.selectOption('#bg-select', '#ffffff');
+  await page.fill('#radius-input', '12');
+  await page.locator('#radius-input').dispatchEvent('change');
+  const style = await page.locator('#preview .hs-wrap').getAttribute('style');
+  expect(style).toContain('padding:24px');
+  expect(style).toContain('border-radius:12px');
+  const dims = await page.locator('#dims-info').textContent();
+  expect(dims).not.toBe('');
+});
+
+test('点击单元格编辑列宽', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.locator('#preview td[data-r="2"][data-c="1"]').click();
+  await expect(page.locator('#cell-edit')).toBeVisible();
+  await expect(page.locator('#col-label')).toHaveText('B');
+  await expect(page.locator('#row-label')).toHaveText('3');
+  await page.fill('#col-width-input', '200');
+  await page.locator('#col-width-input').dispatchEvent('change');
+  const colStyle = await page.locator('#preview col').nth(1).getAttribute('style');
+  expect(colStyle).toContain('width:200px');
+  const selStillThere = await page.locator('#preview td.hs-selected').count();
+  expect(selStillThere).toBe(1);
+});
+
+test('点击单元格编辑行高', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.locator('#preview td[data-r="0"][data-c="0"]').click();
+  await page.fill('#row-height-input', '60');
+  await page.locator('#row-height-input').dispatchEvent('change');
+  const trStyle = await page.locator('#preview tr').first().getAttribute('style');
+  expect(trStyle).toContain('height:60px');
+});
+
+test('CSV上传后编辑列宽自动回填默认', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', csv);
+  await page.locator('#preview td[data-c="0"]').first().click();
+  await page.fill('#col-width-input', '150');
+  await page.locator('#col-width-input').dispatchEvent('change');
+  const colStyle = await page.locator('#preview col').first().getAttribute('style');
+  expect(colStyle).toContain('width:150px');
+});
