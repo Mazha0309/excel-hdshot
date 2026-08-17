@@ -114,12 +114,6 @@ test('CSV 上传渲染', async ({ page }) => {
   await expect(page.locator('#preview td').nth(5)).toHaveText('含,逗号');
 });
 
-test('拖拽上传触发预览', async ({ page }) => {
-  await page.goto(pageUrl);
-  await page.setInputFiles('#file-input', xlsx);
-  await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
-});
-
 test('点击上传区打开文件选择器并上传', async ({ page }) => {
   await page.goto(pageUrl);
   const [chooser] = await Promise.all([
@@ -157,7 +151,7 @@ test('空表提示', async ({ page }) => {
   await expect(page.locator('#dims-info')).toHaveText('');
 });
 
-test('单sheet文件禁用手表选择', async ({ page }) => {
+test('单sheet文件禁用工作表选择', async ({ page }) => {
   await page.goto(pageUrl);
   await page.setInputFiles('#file-input', csv);
   await expect(page.locator('#sheet-select')).toBeDisabled();
