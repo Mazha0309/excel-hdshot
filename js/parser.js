@@ -267,7 +267,7 @@
       const colWidths = [];
       for (let c = 1; c <= colCount; c++) {
         const w = ws.getColumn(c).width;
-        colWidths.push(w ? Math.round(w * 7) : null);
+        colWidths.push(w ? Math.round(w * 7) : 59);
       }
       return { name: ws.name, rows, colWidths, cellCount };
     });

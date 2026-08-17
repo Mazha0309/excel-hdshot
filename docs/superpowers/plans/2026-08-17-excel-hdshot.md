@@ -55,6 +55,8 @@ Exporter.exportPng(tableEl, opts) -> Promise<{ blob: Blob, width: number, height
 // opts = { scale: number, margin: number(px), background: string(css), radius: number(px) }
 ```
 
+**v1 已知限制：** 未设列宽列默认 59px；合并区域样式以主单元格为准（仅覆盖单元格有样式时 v1 不还原）。
+
 ---
 
 ### Task 1: 脚手架与环境
@@ -522,6 +524,19 @@ test('parseXlsx: 空白合并主单元格保留colspan', async () => {
   assert.strictEqual(r1[1].hidden, true);
   assert.strictEqual(r1[2].text, 'X');
 });
+
+test('parseXlsx: 未设列宽的列使用默认宽度', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getColumn(1).width = 10;
+  ws.getCell('A1').value = 'a';
+  ws.getCell('E1').value = 'e';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].colWidths[0], 70);
+  assert.strictEqual(sheets[0].colWidths[4], 59);
+  assert.strictEqual(sheets[0].rows[0].cells[4].text, 'e');
+});
 ```
 
 - [ ] **Step 2: 运行测试确认新测试失败**
@@ -740,7 +755,7 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
       const colWidths = [];
       for (let c = 1; c <= colCount; c++) {
         const w = ws.getColumn(c).width;
-        colWidths.push(w ? Math.round(w * 7) : null);
+        colWidths.push(w ? Math.round(w * 7) : 59);
       }
       return { name: ws.name, rows, colWidths, cellCount };
     });
@@ -885,6 +900,40 @@ test('空列占位保留列对齐（null→空td，hidden→跳过）', () => {
   assert.ok(rowHtml.includes('></td>'));
   assert.ok(rowHtml.includes('>B</td>'));
 });
+
+test('rowspan 属性输出', () => {
+  const rsSheet = {
+    name: 'r',
+    rows: [{ height: null, cells: [{ text: 'v', rowspan: 2, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null }] }],
+    colWidths: [],
+    cellCount: 1
+  };
+  const html = renderer.renderSheet(rsSheet);
+  assert.ok(html.includes('rowspan="2"'));
+});
+
+test('溢出裁剪与换行保留换行符', () => {
+  const wrapSheet = {
+    name: 'w',
+    rows: [{ height: null, cells: [{ text: 'a\nb', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: { h: null, v: null, wrap: true }, border: null }] }],
+    colWidths: [100],
+    cellCount: 1
+  };
+  const html = renderer.renderSheet(wrapSheet);
+  assert.ok(html.includes('overflow:hidden'));
+  assert.ok(html.includes('white-space:pre-wrap'));
+});
+
+test('字体名引号消毒', () => {
+  const fSheet = {
+    name: 'f',
+    rows: [{ height: null, cells: [{ text: 'x', rowspan: 1, colspan: 1, hidden: false, font: { name: 'Bad\'"Name', size: 11, bold: false, italic: false, underline: false, color: null }, fill: null, align: null, border: null }] }],
+    colWidths: [],
+    cellCount: 1
+  };
+  const html = renderer.renderSheet(fSheet);
+  assert.ok(html.includes("font-family:'BadName',sans-serif"));
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -941,7 +990,7 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
     const a = cell.align;
     s.textAlign = (a && a.h) || 'left';
     s.verticalAlign = (a && a.v) || 'middle';
-    s.whiteSpace = (a && a.wrap) ? 'normal' : 'nowrap';
+    s.whiteSpace = (a && a.wrap) ? 'pre-wrap' : 'nowrap';
     s.overflow = 'hidden';
     s.padding = '0 4px';
     const b = cell.border || (opts.allBorders ? {

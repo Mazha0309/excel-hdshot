@@ -175,3 +175,16 @@ test('parseXlsx: 空白合并主单元格保留colspan', async () => {
   assert.strictEqual(r1[1].hidden, true);
   assert.strictEqual(r1[2].text, 'X');
 });
+
+test('parseXlsx: 未设列宽的列使用默认宽度', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getColumn(1).width = 10;
+  ws.getCell('A1').value = 'a';
+  ws.getCell('E1').value = 'e';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].colWidths[0], 70);
+  assert.strictEqual(sheets[0].colWidths[4], 59);
+  assert.strictEqual(sheets[0].rows[0].cells[4].text, 'e');
+});

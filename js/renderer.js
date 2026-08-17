@@ -44,7 +44,7 @@
     const a = cell.align;
     s.textAlign = (a && a.h) || 'left';
     s.verticalAlign = (a && a.v) || 'middle';
-    s.whiteSpace = (a && a.wrap) ? 'normal' : 'nowrap';
+    s.whiteSpace = (a && a.wrap) ? 'pre-wrap' : 'nowrap';
     s.overflow = 'hidden';
     s.padding = '0 4px';
     const b = cell.border || (opts.allBorders ? {

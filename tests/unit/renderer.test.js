@@ -112,3 +112,37 @@ test('空列占位保留列对齐（null→空td，hidden→跳过）', () => {
   assert.ok(rowHtml.includes('></td>'));
   assert.ok(rowHtml.includes('>B</td>'));
 });
+
+test('rowspan 属性输出', () => {
+  const rsSheet = {
+    name: 'r',
+    rows: [{ height: null, cells: [{ text: 'v', rowspan: 2, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null }] }],
+    colWidths: [],
+    cellCount: 1
+  };
+  const html = renderer.renderSheet(rsSheet);
+  assert.ok(html.includes('rowspan="2"'));
+});
+
+test('溢出裁剪与换行保留换行符', () => {
+  const wrapSheet = {
+    name: 'w',
+    rows: [{ height: null, cells: [{ text: 'a\nb', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: { h: null, v: null, wrap: true }, border: null }] }],
+    colWidths: [100],
+    cellCount: 1
+  };
+  const html = renderer.renderSheet(wrapSheet);
+  assert.ok(html.includes('overflow:hidden'));
+  assert.ok(html.includes('white-space:pre-wrap'));
+});
+
+test('字体名引号消毒', () => {
+  const fSheet = {
+    name: 'f',
+    rows: [{ height: null, cells: [{ text: 'x', rowspan: 1, colspan: 1, hidden: false, font: { name: 'Bad\'"Name', size: 11, bold: false, italic: false, underline: false, color: null }, fill: null, align: null, border: null }] }],
+    colWidths: [],
+    cellCount: 1
+  };
+  const html = renderer.renderSheet(fSheet);
+  assert.ok(html.includes("font-family:'BadName',sans-serif"));
+});
