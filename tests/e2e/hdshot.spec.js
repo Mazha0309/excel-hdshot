@@ -38,25 +38,34 @@ test('exportPng 白边与倍率计入尺寸', async ({ page }) => {
   expect(res.w).toBe(240); // (100 + 10*2) * 2
 });
 
-test('exportPng 渲染的像素确实含非空白内容', async ({ page }) => {
+test('exportPng 内容真实渲染（非空白且铺满画布）', async ({ page }) => {
   await page.goto(pageUrl);
   const stats = await page.evaluate(async () => {
     document.body.insertAdjacentHTML('beforeend',
-      '<table id="t3" style="border-collapse:collapse;width:120px;table-layout:fixed">' +
-      '<tbody><tr><td style="background:#000;padding:0;font-size:11pt">X</td></tr></tbody></table>');
+      '<table id="t3" style="border-collapse:collapse;width:120px;table-layout:fixed;height:30px;background:#fff;border:1px solid #000">' +
+      '<tbody><tr><td style="background:#000;padding:4px;font-size:11pt">X</td>' +
+      '<td style="padding:4px;font-size:11pt">Y</td></tr></tbody></table>');
     const r = await Exporter.exportPng(document.getElementById('t3'),
-      { scale: 1, margin: 0, background: '#ffffff', radius: 0 });
+      { scale: 3, margin: 0, background: '#ffffff', radius: 0 });
     const canvas = document.createElement('canvas');
     canvas.width = r.width; canvas.height = r.height;
     const ctx = canvas.getContext('2d');
     const bmp = await createImageBitmap(r.blob);
     ctx.drawImage(bmp, 0, 0);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    let nonWhite = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250) nonWhite++;
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1, content = 0, white = 0;
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        if (d[i] < 250 || d[i+1] < 250 || d[i+2] < 250) { content++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+        else if (d[i+3] === 255) white++;
+      }
     }
-    return { nonWhite, total: canvas.width * canvas.height };
+    return { content, white, total: canvas.width * canvas.height,
+      fillW: (maxX - minX + 1) / canvas.width, fillH: (maxY - minY + 1) / canvas.height };
   });
-  expect(stats.nonWhite).toBeGreaterThan(0);
+  expect(stats.content).toBeGreaterThan(0);
+  expect(stats.white).toBeGreaterThan(0);
+  expect(stats.fillW).toBeGreaterThan(0.9);
+  expect(stats.fillH).toBeGreaterThan(0.9);
 });

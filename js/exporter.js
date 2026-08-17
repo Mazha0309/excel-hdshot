@@ -5,19 +5,26 @@
     root.Exporter = factory();
   }
 })(typeof self !== 'undefined' ? self : this, function () {
-  function buildSvgXml(el, w, h) {
+  function buildSvgXml(el, w, h, scale) {
     const xmlns = 'http://www.w3.org/2000/svg';
     const xhtml = 'http://www.w3.org/1999/xhtml';
     const svg = document.createElementNS(xmlns, 'svg');
     svg.setAttribute('xmlns', xmlns);
-    svg.setAttribute('width', w);
-    svg.setAttribute('height', h);
+    svg.setAttribute('width', Math.round(w * scale));
+    svg.setAttribute('height', Math.round(h * scale));
     const fo = document.createElementNS(xmlns, 'foreignObject');
     fo.setAttribute('width', '100%');
     fo.setAttribute('height', '100%');
     const body = document.createElementNS(xhtml, 'div');
     body.setAttribute('xmlns', xhtml);
-    body.appendChild(el.cloneNode(true));
+    const clone = el.cloneNode(true);
+    clone.style.removeProperty('position');
+    clone.style.removeProperty('left');
+    clone.style.removeProperty('top');
+    clone.style.width = w + 'px';
+    clone.style.height = h + 'px';
+    clone.style.zoom = scale;
+    body.appendChild(clone);
     fo.appendChild(body);
     svg.appendChild(fo);
     return new XMLSerializer().serializeToString(svg);
@@ -49,18 +56,19 @@
     const { wrap, w, h } = measureAndWrap(tableEl, opts);
     try {
       if (!w || !h) throw new Error('表格无内容');
-      const xml = buildSvgXml(wrap, w, h);
+      const xml = buildSvgXml(wrap, w, h, opts.scale);
       const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
       const img = await loadImage(url);
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(w * opts.scale);
       canvas.height = Math.round(h * opts.scale);
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
       const blob = await new Promise((res, rej) =>
         canvas.toBlob(b => b ? res(b) : rej(new Error('导出失败')), 'image/png'));
       return { blob, width: canvas.width, height: canvas.height };
     } catch (e) {
+      console.error('导出失败', e);
       throw new Error('渲染失败：表格可能包含外部图片资源，无法导出');
     } finally {
       wrap.remove();
