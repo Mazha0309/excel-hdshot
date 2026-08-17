@@ -1282,6 +1282,38 @@ test('exportPng 白边与倍率计入尺寸', async ({ page }) => {
   });
   expect(res.w).toBe(240); // (100 + 10*2) * 2
 });
+
+test('exportPng 内容真实渲染（非空白且铺满画布）', async ({ page }) => {
+  await page.goto(pageUrl);
+  const stats = await page.evaluate(async () => {
+    document.body.insertAdjacentHTML('beforeend',
+      '<table id="t3" style="border-collapse:collapse;width:120px;table-layout:fixed;background:#fff">' +
+      '<tbody><tr><td style="background:#000;padding:4px;font-size:11pt">X</td>' +
+      '<td style="padding:4px;font-size:11pt">Y</td></tr></tbody></table>');
+    const r = await Exporter.exportPng(document.getElementById('t3'),
+      { scale: 3, margin: 0, background: '#ffffff', radius: 0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = r.width; canvas.height = r.height;
+    const ctx = canvas.getContext('2d');
+    const bmp = await createImageBitmap(r.blob);
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1, content = 0, white = 0;
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        if (d[i] < 250 || d[i+1] < 250 || d[i+2] < 250) { content++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+        else if (d[i+3] === 255) white++;
+      }
+    }
+    return { content, white, total: canvas.width * canvas.height,
+      fillW: (maxX - minX + 1) / canvas.width, fillH: (maxY - minY + 1) / canvas.height };
+  });
+  expect(stats.content).toBeGreaterThan(0);
+  expect(stats.white).toBeGreaterThan(0);
+  expect(stats.fillW).toBeGreaterThan(0.9);
+  expect(stats.fillH).toBeGreaterThan(0.9);
+});
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -1291,7 +1323,11 @@ Expected: FAIL — `Exporter is not defined`
 
 - [ ] **Step 3: 实现 exporter.js**
 
-**关键技术决策**：renderer 输出的是 HTML 字符串（`<td>`/`<tr>`/`<col>` 未闭合标签），直接拼进 SVG 会产生非法 XML，foreignObject 将完全无法渲染。因此必须用 DOM 构建：把 HTML 注入 DOM 节点 → `XMLSerializer` 序列化为标准 XML → 包进 SVG data URL。注意 SVG 序列化时 void 元素（如 `<col>`）会自动输出为 `<col .../>` 自闭合形式。
+**关键技术决策**：
+1. renderer 输出的是 HTML 字符串（`<td>`/`<tr>`/`<col>` 未闭合标签），直接拼进 SVG 会产生非法 XML。必须用 DOM 构建：`createElementNS` + `XMLSerializer`。
+2. **离屏定位（`position:fixed;left:-99999px`）绝不能序列化进 SVG**——否则内容渲染到视口外，导出全空白。序列化前必须从 clone 中移除 position/left/top。
+3. **SVG 尺寸必须按倍率放大 + `zoom` 布局缩放**：SVG 宽高设为 `round(w*scale) × round(h*scale)`，wrap 克隆设 `zoom: scale`，然后 `drawImage` 1:1。这样 HTML 在目标分辨率重新布局，文字字形按放大尺寸光栅化——真正矢量级清晰。若 SVG 保持 w×h 再 drawImage 放大，只是 1× 位图拉伸，文字会糊。
+4. 实测验证（Playwright）：zoom 与 transform 均能把表格内容缩放到铺满画布；zoom 为布局级缩放，文本字形按高分辨率重绘，采用 zoom。
 
 ```js
 (function (root, factory) {
@@ -1301,19 +1337,26 @@ Expected: FAIL — `Exporter is not defined`
     root.Exporter = factory();
   }
 })(typeof self !== 'undefined' ? self : this, function () {
-  function buildSvgXml(el, w, h) {
+  function buildSvgXml(el, w, h, scale) {
     const xmlns = 'http://www.w3.org/2000/svg';
     const xhtml = 'http://www.w3.org/1999/xhtml';
     const svg = document.createElementNS(xmlns, 'svg');
     svg.setAttribute('xmlns', xmlns);
-    svg.setAttribute('width', w);
-    svg.setAttribute('height', h);
+    svg.setAttribute('width', Math.round(w * scale));
+    svg.setAttribute('height', Math.round(h * scale));
     const fo = document.createElementNS(xmlns, 'foreignObject');
     fo.setAttribute('width', '100%');
     fo.setAttribute('height', '100%');
     const body = document.createElementNS(xhtml, 'div');
     body.setAttribute('xmlns', xhtml);
-    body.appendChild(el.cloneNode(true));
+    const clone = el.cloneNode(true);
+    clone.style.removeProperty('position');
+    clone.style.removeProperty('left');
+    clone.style.removeProperty('top');
+    clone.style.width = w + 'px';
+    clone.style.height = h + 'px';
+    clone.style.zoom = scale;
+    body.appendChild(clone);
     fo.appendChild(body);
     svg.appendChild(fo);
     return new XMLSerializer().serializeToString(svg);
@@ -1345,18 +1388,19 @@ Expected: FAIL — `Exporter is not defined`
     const { wrap, w, h } = measureAndWrap(tableEl, opts);
     try {
       if (!w || !h) throw new Error('表格无内容');
-      const xml = buildSvgXml(wrap, w, h);
+      const xml = buildSvgXml(wrap, w, h, opts.scale);
       const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
       const img = await loadImage(url);
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(w * opts.scale);
       canvas.height = Math.round(h * opts.scale);
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
       const blob = await new Promise((res, rej) =>
         canvas.toBlob(b => b ? res(b) : rej(new Error('导出失败')), 'image/png'));
       return { blob, width: canvas.width, height: canvas.height };
     } catch (e) {
+      console.error('导出失败', e);
       throw new Error('渲染失败：表格可能包含外部图片资源，无法导出');
     } finally {
       wrap.remove();
@@ -1366,8 +1410,6 @@ Expected: FAIL — `Exporter is not defined`
   return { exportPng };
 });
 ```
-
-**陷阱提示**：`measureAndWrap` 生成的 wrap 在 `buildSvgXml` 中被 `cloneNode(true)` 复制进 SVG；原 wrap 随后 `remove()`。clone 必须发生在 `measureAndWrap` 返回之后、`wrap.remove()` 之前——`buildSvgXml` 内部 clone，顺序正确。
 
 - [ ] **Step 4: 运行确认通过**
 
