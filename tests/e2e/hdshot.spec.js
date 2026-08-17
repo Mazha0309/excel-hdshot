@@ -179,3 +179,11 @@ test('真实拖拽上传触发预览', async ({ page }) => {
   await page.dispatchEvent('#drop-zone', 'drop', { dataTransfer });
   await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
 });
+
+test('主题色标题背景还原（theme+tint）', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', path.join(__dirname, '..', 'fixtures', 'theme.xlsx'));
+  await expect(page.locator('#preview td').first()).toHaveText('主题色标题');
+  const style = await page.locator('#preview td').first().getAttribute('style');
+  expect(style).toContain('background:#8FAADC');
+});

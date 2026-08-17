@@ -81,5 +81,20 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
   );
 
   fs.writeFileSync(path.join(outDir, 'bad.txt'), 'not a sheet', 'utf8');
+
+  const wbTheme = new ExcelJS.Workbook();
+  const wsTheme = wbTheme.addWorksheet('主题色');
+  wsTheme.mergeCells('A1:C1');
+  const t2 = wsTheme.getCell('A1');
+  t2.value = '主题色标题';
+  t2.fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } };
+  t2.font = { size: 14, bold: true, color: { theme: 1 } };
+  wsTheme.getCell('A2').value = '索引色';
+  wsTheme.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 5 } };
+  wsTheme.getCell('A3').value = '深色调';
+  wsTheme.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: -0.25 } };
+  wsTheme.getColumn(1).width = 16;
+  await wbTheme.xlsx.writeFile(path.join(outDir, 'theme.xlsx'));
+
   console.log('fixtures written to', outDir);
 })();

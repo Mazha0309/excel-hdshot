@@ -208,6 +208,21 @@ const outDir = path.join(__dirname, '..', 'tests', 'fixtures');
   );
 
   fs.writeFileSync(path.join(outDir, 'bad.txt'), 'not a sheet', 'utf8');
+
+  const wbTheme = new ExcelJS.Workbook();
+  const wsTheme = wbTheme.addWorksheet('主题色');
+  wsTheme.mergeCells('A1:C1');
+  const t2 = wsTheme.getCell('A1');
+  t2.value = '主题色标题';
+  t2.fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } };
+  t2.font = { size: 14, bold: true, color: { theme: 1 } };
+  wsTheme.getCell('A2').value = '索引色';
+  wsTheme.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 5 } };
+  wsTheme.getCell('A3').value = '深色调';
+  wsTheme.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: -0.25 } };
+  wsTheme.getColumn(1).width = 16;
+  await wbTheme.xlsx.writeFile(path.join(outDir, 'theme.xlsx'));
+
   console.log('fixtures written to', outDir);
 })();
 ```
@@ -537,6 +552,56 @@ test('parseXlsx: 未设列宽的列使用默认宽度', async () => {
   assert.strictEqual(sheets[0].colWidths[4], 59);
   assert.strictEqual(sheets[0].rows[0].cells[4].text, 'e');
 });
+
+test('parseXlsx: 主题色填充 tint=0.4 → Excel官方值 #8FAADC', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#8FAADC');
+});
+
+test('parseXlsx: 主题色填充 tint=0 → 基色', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#4472C4');
+});
+
+test('parseXlsx: 主题色负tint线性加深', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: -0.25 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#335693');
+});
+
+test('parseXlsx: 索引色填充', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 5 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#FFFF00');
+});
+
+test('parseXlsx: 主题色字体颜色', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').font = { color: { theme: 4, tint: 0 }, bold: true };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].font.color, '#4472C4');
+});
 ```
 
 - [ ] **Step 2: 运行测试确认新测试失败**
@@ -561,7 +626,58 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
     return null;
   }
 
-  function normalizeFont(f) {
+  const STANDARD_THEME = [
+    '000000', 'FFFFFF', '44546A', 'E7E6E6',
+    '4472C4', 'ED7D31', 'A5A5A5', 'FFC000',
+    '5B9BD5', '70AD47', '0563C1', '954F72'
+  ];
+  const INDEXED = [
+    '000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF',
+    '000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF',
+    '800000','008000','000080','808000','800080','008080','C0C0C0','808080',
+    '9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF',
+    '000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF',
+    '00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99',
+    '3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696',
+    '003366','339966','003300','333300','993300','993366','333399','333333'
+  ];
+
+  function parseThemeXml(xml) {
+    if (!xml) return null;
+    const names = ['dk1', 'lt1', 'dk2', 'lt2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'];
+    const scheme = [];
+    for (const name of names) {
+      const re = new RegExp('<a:' + name + '><a:(?:srgbClr val="([0-9A-Fa-f]{6})"|sysClr[^>]*?lastClr="([0-9A-Fa-f]{6})")', 'i');
+      const m = re.exec(xml);
+      scheme.push(m ? (m[1] || m[2] || null) : null);
+    }
+    return scheme;
+  }
+
+  function applyTint(hex, tint) {
+    if (!tint) return hex;
+    const chan = (v, f) => tint < 0 ? Math.round(v * f) : Math.round(v + (255 - v) * tint);
+    const f = 1 + tint;
+    const r = chan(parseInt(hex.slice(0, 2), 16), f);
+    const g = chan(parseInt(hex.slice(2, 4), 16), f);
+    const b = chan(parseInt(hex.slice(4, 6), 16), f);
+    return [r, g, b].map(n => n.toString(16).padStart(2, '0').toUpperCase()).join('');
+  }
+
+  function resolveColor(c, theme) {
+    if (!c) return null;
+    if (c.argb) return argbToCss(c.argb);
+    if (typeof c.theme === 'number' && c.theme >= 0 && c.theme <= 11) {
+      const base = (theme && theme[c.theme]) || STANDARD_THEME[c.theme] || null;
+      return base ? '#' + applyTint(base, c.tint || 0) : null;
+    }
+    if (typeof c.indexed === 'number' && c.indexed >= 0 && c.indexed <= 63) {
+      return '#' + INDEXED[c.indexed];
+    }
+    return null;
+  }
+
+  function normalizeFont(f, theme) {
     if (!f) return Object.assign({}, DEFAULT_FONT);
     return {
       name: f.name || 'Calibri',
@@ -569,13 +685,13 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
       bold: !!f.bold,
       italic: !!f.italic,
       underline: !!f.underline,
-      color: argbToCss(f.color && f.color.argb)
+      color: resolveColor(f.color, theme)
     };
   }
 
-  function normalizeFill(f) {
+  function normalizeFill(f, theme) {
     if (!f || f.type !== 'pattern') return null;
-    const c = argbToCss(f.fgColor && f.fgColor.argb);
+    const c = resolveColor(f.fgColor, theme);
     return c ? { color: c } : null;
   }
 
@@ -716,6 +832,8 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
   async function parseXlsx(buf) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf);
+    const themeKeys = wb.model.themes ? Object.keys(wb.model.themes) : [];
+    const theme = parseThemeXml(themeKeys.length ? wb.model.themes[themeKeys[0]] : '');
     const sheets = wb.worksheets.map(ws => {
       const merges = [];
       for (const spec of (ws.model.merges || [])) {
@@ -742,8 +860,8 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
             rowspan: master ? master.r2 - master.r1 + 1 : 1,
             colspan: master ? master.c2 - master.c1 + 1 : 1,
             hidden: covered,
-            font: normalizeFont(st.font),
-            fill: normalizeFill(st.fill),
+            font: normalizeFont(st.font, theme),
+            fill: normalizeFill(st.fill, theme),
             align: normalizeAlign(st.alignment),
             border: normalizeBorder(st.border)
           });

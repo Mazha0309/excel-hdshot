@@ -188,3 +188,53 @@ test('parseXlsx: 未设列宽的列使用默认宽度', async () => {
   assert.strictEqual(sheets[0].colWidths[4], 59);
   assert.strictEqual(sheets[0].rows[0].cells[4].text, 'e');
 });
+
+test('parseXlsx: 主题色填充 tint=0.4 → Excel官方值 #8FAADC', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#8FAADC');
+});
+
+test('parseXlsx: 主题色填充 tint=0 → 基色', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#4472C4');
+});
+
+test('parseXlsx: 主题色负tint线性加深', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: -0.25 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#335693');
+});
+
+test('parseXlsx: 索引色填充', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 5 } };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].fill.color, '#FFFF00');
+});
+
+test('parseXlsx: 主题色字体颜色', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.getCell('A1').value = 'x';
+  ws.getCell('A1').font = { color: { theme: 4, tint: 0 }, bold: true };
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  assert.strictEqual(sheets[0].rows[0].cells[0].font.color, '#4472C4');
+});
