@@ -1291,6 +1291,8 @@ Expected: FAIL — `Exporter is not defined`
 
 - [ ] **Step 3: 实现 exporter.js**
 
+**关键技术决策**：renderer 输出的是 HTML 字符串（`<td>`/`<tr>`/`<col>` 未闭合标签），直接拼进 SVG 会产生非法 XML，foreignObject 将完全无法渲染。因此必须用 DOM 构建：把 HTML 注入 DOM 节点 → `XMLSerializer` 序列化为标准 XML → 包进 SVG data URL。注意 SVG 序列化时 void 元素（如 `<col>`）会自动输出为 `<col .../>` 自闭合形式。
+
 ```js
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -1299,12 +1301,22 @@ Expected: FAIL — `Exporter is not defined`
     root.Exporter = factory();
   }
 })(typeof self !== 'undefined' ? self : this, function () {
-  function buildSvgDataUrl(wrapEl, w, h) {
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
-      '<foreignObject width="100%" height="100%">' +
-      '<div xmlns="http://www.w3.org/1999/xhtml">' + wrapEl.outerHTML + '</div>' +
-      '</foreignObject></svg>';
-    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  function buildSvgXml(el, w, h) {
+    const xmlns = 'http://www.w3.org/2000/svg';
+    const xhtml = 'http://www.w3.org/1999/xhtml';
+    const svg = document.createElementNS(xmlns, 'svg');
+    svg.setAttribute('xmlns', xmlns);
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    const fo = document.createElementNS(xmlns, 'foreignObject');
+    fo.setAttribute('width', '100%');
+    fo.setAttribute('height', '100%');
+    const body = document.createElementNS(xhtml, 'div');
+    body.setAttribute('xmlns', xhtml);
+    body.appendChild(el.cloneNode(true));
+    fo.appendChild(body);
+    svg.appendChild(fo);
+    return new XMLSerializer().serializeToString(svg);
   }
 
   function loadImage(src) {
@@ -1332,7 +1344,9 @@ Expected: FAIL — `Exporter is not defined`
     opts = Object.assign({ scale: 2, margin: 16, background: '#ffffff', radius: 0 }, opts);
     const { wrap, w, h } = measureAndWrap(tableEl, opts);
     try {
-      const url = buildSvgDataUrl(wrap, w, h);
+      if (!w || !h) throw new Error('表格无内容');
+      const xml = buildSvgXml(wrap, w, h);
+      const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
       const img = await loadImage(url);
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(w * opts.scale);
@@ -1352,6 +1366,8 @@ Expected: FAIL — `Exporter is not defined`
   return { exportPng };
 });
 ```
+
+**陷阱提示**：`measureAndWrap` 生成的 wrap 在 `buildSvgXml` 中被 `cloneNode(true)` 复制进 SVG；原 wrap 随后 `remove()`。clone 必须发生在 `measureAndWrap` 返回之后、`wrap.remove()` 之前——`buildSvgXml` 内部 clone，顺序正确。
 
 - [ ] **Step 4: 运行确认通过**
 
