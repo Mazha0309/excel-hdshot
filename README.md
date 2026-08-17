@@ -28,7 +28,7 @@ npm run test:e2e     # Playwright e2e（需 chromium，系统已装）
 
 - xlsx 解析与样式还原使用 [ExcelJS](https://github.com/exceljs/exceljs)（MIT，已 vendored 到 `vendor/`）
 - CSV 支持 UTF-8/GBK 自动识别、逗号/制表符分隔、引号转义、BOM
-- 还原能力：单元格文本（含数字/日期格式）、字体、填充色、边框、对齐、合并单元格、行高列宽
+- 还原能力：单元格文本（含常见数字/日期格式）、字体、填充色、边框、对齐、合并单元格、行高列宽
 - 导出管线：DOM 表格 → SVG `foreignObject`（XMLSerializer）→ canvas 按倍率 `zoom` 布局缩放 → PNG
-- 已知限制：未设列宽默认 59px；合并区域样式以主单元格为准；主题色/部分透明色不还原；加密 xlsx 不支持
+- 已知限制：建议使用 Chromium/Edge 内核浏览器（`zoom` 布局缩放依赖其支持）；数字格式仅还原常见类型（货币符号/引号字面量/科学计数不还原）；未设列宽默认 59px；合并区域样式以主单元格为准；主题色/部分透明色不还原；加密 xlsx 不支持
 - 大表格（>8000 单元格）导出耗时较长属正常现象
