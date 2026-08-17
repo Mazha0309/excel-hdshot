@@ -485,6 +485,27 @@ test('parseXlsx: 日期时间与12小时制（UTC无关）', async () => {
   assert.strictEqual(sheets[0].rows[1].cells[0].text, '10:00 PM');
   assert.strictEqual(sheets[0].rows[2].cells[0].text, '30:45');
 });
+
+test('parseXlsx: 合并覆盖空单元格为hidden对象，非合并空格为null', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.mergeCells('A1:B1');
+  ws.getCell('A1').value = 'M';
+  ws.getCell('C1').value = 'X';
+  ws.getCell('A2').value = 'a';
+  ws.getCell('C2').value = 'c';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  const r1 = sheets[0].rows[0].cells;
+  assert.strictEqual(r1[0].text, 'M');
+  assert.strictEqual(r1[0].colspan, 2);
+  assert.strictEqual(r1[1].hidden, true);
+  assert.strictEqual(r1[2].text, 'X');
+  const r2 = sheets[0].rows[1].cells;
+  assert.strictEqual(r2[0].text, 'a');
+  assert.strictEqual(r2[1], null);
+  assert.strictEqual(r2[2].text, 'c');
+});
 ```
 
 - [ ] **Step 2: 运行测试确认新测试失败**
@@ -681,10 +702,10 @@ Expected: 新 4 个测试 FAIL（`parseXlsx 未实现`）
         for (let c = 1; c <= colCount; c++) {
           const xc = xrow.getCell(c);
           const st = xc.style || {};
-          if (!hasContent(xc, st)) { cells.push(null); continue; }
           const ri = r - 1, ci = c - 1;
           const master = merges.find(mm => mm.r1 === ri && mm.c1 === ci);
           const covered = merges.some(mm => mm.r1 <= ri && mm.c1 <= ci && mm.r2 >= ri && mm.c2 >= ci && !(mm.r1 === ri && mm.c1 === ci));
+          if (!hasContent(xc, st) && !covered) { cells.push(null); continue; }
           cells.push({
             text: textOf(xc),
             rowspan: master ? master.r2 - master.r1 + 1 : 1,
@@ -826,6 +847,28 @@ test('边框样式映射（thin/dashed）', () => {
   assert.ok(html.includes('border-top:1px solid #000000'));
   assert.ok(html.includes('border-bottom:1px dashed'));
 });
+
+test('空列占位保留列对齐（null→空td，hidden→跳过）', () => {
+  const sparseSheet = {
+    name: 's',
+    rows: [{
+      height: null,
+      cells: [
+        { text: 'A', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null },
+        null,
+        { text: 'B', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null }
+      ]
+    }],
+    colWidths: [100, 100, 100],
+    cellCount: 2
+  };
+  const html = renderer.renderSheet(sparseSheet);
+  const rowHtml = html.slice(html.indexOf('<tr'), html.indexOf('</tr>') + 5);
+  assert.strictEqual((rowHtml.match(/<td/g) || []).length, 3);
+  assert.ok(rowHtml.includes('>A</td>'));
+  assert.ok(rowHtml.includes('></td>'));
+  assert.ok(rowHtml.includes('>B</td>'));
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -872,7 +915,7 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
   function renderCell(cell, opts) {
     const s = {};
     const f = cell.font || DEFAULT_FONT;
-    if (f.name) s.fontFamily = "'" + f.name.replace(/'/g, '') + "',sans-serif";
+    if (f.name) s.fontFamily = "'" + f.name.replace(/['"]/g, '') + "',sans-serif";
     s.fontSize = (f.size || 11) + 'pt';
     if (f.bold) s.fontWeight = 'bold';
     if (f.italic) s.fontStyle = 'italic';
@@ -883,6 +926,7 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
     s.textAlign = (a && a.h) || 'left';
     s.verticalAlign = (a && a.v) || 'middle';
     s.whiteSpace = (a && a.wrap) ? 'normal' : 'nowrap';
+    s.overflow = 'hidden';
     s.padding = '0 4px';
     const b = cell.border || (opts.allBorders ? {
       top: { style: 'thin', color: '#999' }, bottom: { style: 'thin', color: '#999' },
@@ -916,7 +960,8 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
     for (const row of sheet.rows) {
       html += '<tr' + (row.height ? ' style="height:' + row.height + 'px"' : '') + '>';
       for (const cell of row.cells) {
-        if (!cell || cell.hidden) continue;
+        if (cell === null) { html += '<td></td>'; continue; }
+        if (cell.hidden) continue;
         html += renderCell(cell, opts);
       }
       html += '</tr>';

@@ -34,7 +34,7 @@
   function renderCell(cell, opts) {
     const s = {};
     const f = cell.font || DEFAULT_FONT;
-    if (f.name) s.fontFamily = "'" + f.name.replace(/'/g, '') + "',sans-serif";
+    if (f.name) s.fontFamily = "'" + f.name.replace(/['"]/g, '') + "',sans-serif";
     s.fontSize = (f.size || 11) + 'pt';
     if (f.bold) s.fontWeight = 'bold';
     if (f.italic) s.fontStyle = 'italic';
@@ -45,6 +45,7 @@
     s.textAlign = (a && a.h) || 'left';
     s.verticalAlign = (a && a.v) || 'middle';
     s.whiteSpace = (a && a.wrap) ? 'normal' : 'nowrap';
+    s.overflow = 'hidden';
     s.padding = '0 4px';
     const b = cell.border || (opts.allBorders ? {
       top: { style: 'thin', color: '#999' }, bottom: { style: 'thin', color: '#999' },
@@ -78,7 +79,8 @@
     for (const row of sheet.rows) {
       html += '<tr' + (row.height ? ' style="height:' + row.height + 'px"' : '') + '>';
       for (const cell of row.cells) {
-        if (!cell || cell.hidden) continue;
+        if (cell === null) { html += '<td></td>'; continue; }
+        if (cell.hidden) continue;
         html += renderCell(cell, opts);
       }
       html += '</tr>';

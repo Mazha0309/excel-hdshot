@@ -245,10 +245,10 @@
         for (let c = 1; c <= colCount; c++) {
           const xc = xrow.getCell(c);
           const st = xc.style || {};
-          if (!hasContent(xc, st)) { cells.push(null); continue; }
           const ri = r - 1, ci = c - 1;
           const master = merges.find(mm => mm.r1 === ri && mm.c1 === ci);
           const covered = merges.some(mm => mm.r1 <= ri && mm.c1 <= ci && mm.r2 >= ri && mm.c2 >= ci && !(mm.r1 === ri && mm.c1 === ci));
+          if (!hasContent(xc, st) && !covered) { cells.push(null); continue; }
           cells.push({
             text: textOf(xc),
             rowspan: master ? master.r2 - master.r1 + 1 : 1,

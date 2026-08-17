@@ -138,3 +138,24 @@ test('parseXlsx: 日期时间与12小时制（UTC无关）', async () => {
   assert.strictEqual(sheets[0].rows[1].cells[0].text, '10:00 PM');
   assert.strictEqual(sheets[0].rows[2].cells[0].text, '30:45');
 });
+
+test('parseXlsx: 合并覆盖空单元格为hidden对象，非合并空格为null', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.mergeCells('A1:B1');
+  ws.getCell('A1').value = 'M';
+  ws.getCell('C1').value = 'X';
+  ws.getCell('A2').value = 'a';
+  ws.getCell('C2').value = 'c';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  const r1 = sheets[0].rows[0].cells;
+  assert.strictEqual(r1[0].text, 'M');
+  assert.strictEqual(r1[0].colspan, 2);
+  assert.strictEqual(r1[1].hidden, true);
+  assert.strictEqual(r1[2].text, 'X');
+  const r2 = sheets[0].rows[1].cells;
+  assert.strictEqual(r2[0].text, 'a');
+  assert.strictEqual(r2[1], null);
+  assert.strictEqual(r2[2].text, 'c');
+});

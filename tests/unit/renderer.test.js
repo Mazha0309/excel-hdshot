@@ -90,3 +90,25 @@ test('边框样式映射（thin/dashed）', () => {
   assert.ok(html.includes('border-top:1px solid #000000'));
   assert.ok(html.includes('border-bottom:1px dashed'));
 });
+
+test('空列占位保留列对齐（null→空td，hidden→跳过）', () => {
+  const sparseSheet = {
+    name: 's',
+    rows: [{
+      height: null,
+      cells: [
+        { text: 'A', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null },
+        null,
+        { text: 'B', rowspan: 1, colspan: 1, hidden: false, font: null, fill: null, align: null, border: null }
+      ]
+    }],
+    colWidths: [100, 100, 100],
+    cellCount: 2
+  };
+  const html = renderer.renderSheet(sparseSheet);
+  const rowHtml = html.slice(html.indexOf('<tr'), html.indexOf('</tr>') + 5);
+  assert.strictEqual((rowHtml.match(/<td/g) || []).length, 3);
+  assert.ok(rowHtml.includes('>A</td>'));
+  assert.ok(rowHtml.includes('></td>'));
+  assert.ok(rowHtml.includes('>B</td>'));
+});
