@@ -248,7 +248,7 @@
           const ri = r - 1, ci = c - 1;
           const master = merges.find(mm => mm.r1 === ri && mm.c1 === ci);
           const covered = merges.some(mm => mm.r1 <= ri && mm.c1 <= ci && mm.r2 >= ri && mm.c2 >= ci && !(mm.r1 === ri && mm.c1 === ci));
-          if (!hasContent(xc, st) && !covered) { cells.push(null); continue; }
+          if (!hasContent(xc, st) && !covered && !master) { cells.push(null); continue; }
           cells.push({
             text: textOf(xc),
             rowspan: master ? master.r2 - master.r1 + 1 : 1,

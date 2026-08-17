@@ -159,3 +159,19 @@ test('parseXlsx: 合并覆盖空单元格为hidden对象，非合并空格为nul
   assert.strictEqual(r2[1], null);
   assert.strictEqual(r2[2].text, 'c');
 });
+
+test('parseXlsx: 空白合并主单元格保留colspan', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('t');
+  ws.mergeCells('A1:B1');
+  ws.getCell('C1').value = 'X';
+  ws.getCell('A2').value = 'a';
+  const buf = await wb.xlsx.writeBuffer();
+  const { sheets } = await parser.parseXlsx(buf);
+  const r1 = sheets[0].rows[0].cells;
+  assert.strictEqual(r1[0].colspan, 2);
+  assert.strictEqual(r1[0].hidden, false);
+  assert.strictEqual(r1[0].text, '');
+  assert.strictEqual(r1[1].hidden, true);
+  assert.strictEqual(r1[2].text, 'X');
+});
