@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel 高清截图</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Excel 高清截图</h1>
+    <p>上传 .xlsx / .csv，从数据矢量重绘，导出任意倍率的清晰 PNG</p>
+  </header>
+  <main>
+    <section id="drop-zone">
+      <p class="big">拖入文件，或点击选择</p>
+      <p class="hint">支持 .xlsx / .csv</p>
+      <input type="file" id="file-input" accept=".xlsx,.csv" hidden>
+    </section>
+    <section id="workspace" hidden>
+      <div class="toolbar">
+        <label>工作表
+          <select id="sheet-select"></select>
+        </label>
+        <label>倍率
+          <select id="scale-select">
+            <option value="1">1x</option>
+            <option value="2" selected>2x</option>
+            <option value="3">3x</option>
+            <option value="4">4x</option>
+          </select>
+        </label>
+        <label>白边
+          <input type="number" id="margin-input" value="16" min="0" max="200"> px
+        </label>
+        <label>背景
+          <select id="bg-select">
+            <option value="#ffffff">白色</option>
+            <option value="transparent">透明</option>
+          </select>
+        </label>
+        <label>圆角
+          <input type="number" id="radius-input" value="0" min="0" max="60"> px
+        </label>
+        <button id="export-btn">导出 PNG</button>
+        <span id="dims-info"></span>
+      </div>
+      <div id="preview"></div>
+    </section>
+  </main>
+  <div id="toast"></div>
+  <script src="vendor/exceljs.min.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/exporter.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

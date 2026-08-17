@@ -1,0 +1,82 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: #f2f3f5;
+  color: #1f2329;
+}
+header { padding: 24px 32px 8px; }
+header h1 { margin: 0 0 4px; font-size: 22px; }
+header p { margin: 0; color: #646a73; font-size: 13px; }
+main { padding: 16px 32px 40px; }
+#drop-zone {
+  border: 2px dashed #c4c9d1;
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+  padding: 64px 16px;
+  cursor: pointer;
+}
+#drop-zone.over { border-color: #3370ff; background: #f0f5ff; }
+#drop-zone .big { font-size: 18px; margin: 0 0 8px; }
+#drop-zone .hint { color: #8f959e; margin: 0; font-size: 13px; }
+#workspace .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid #e4e6ea;
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.toolbar label { display: flex; align-items: center; gap: 6px; }
+.toolbar select, .toolbar input {
+  padding: 4px 8px;
+  border: 1px solid #d5d8dd;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.toolbar input[type="number"] { width: 64px; }
+#export-btn {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #3370ff;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+#export-btn:disabled { background: #9ab4ff; cursor: wait; }
+#dims-info { color: #646a73; }
+#preview {
+  overflow: auto;
+  background:
+    linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%),
+    linear-gradient(45deg, #eee 25%, #fff 25%, #fff 75%, #eee 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+  border: 1px solid #e4e6ea;
+  border-radius: 10px;
+  padding: 16px;
+}
+#preview table { background: #fff; }
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%) translateY(20px);
+  background: #1f2329;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s;
+  max-width: 80vw;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.err { background: #d83931; }
