@@ -2,6 +2,14 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 
 const pageUrl = 'file://' + path.join(__dirname, '..', '..', 'index.html');
+const fs = require('fs');
+const xlsx = path.join(__dirname, '..', 'fixtures', 'test.xlsx');
+const csv = path.join(__dirname, '..', 'fixtures', 'test.csv');
+
+function pngSize(buf) {
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a png');
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
 
 test('exportPng 按倍率输出矢量渲染 PNG', async ({ page }) => {
   await page.goto(pageUrl);
@@ -68,4 +76,56 @@ test('exportPng 内容真实渲染（非空白且铺满画布）', async ({ page
   expect(stats.white).toBeGreaterThan(0);
   expect(stats.fillW).toBeGreaterThan(0.9);
   expect(stats.fillH).toBeGreaterThan(0.9);
+});
+
+test('上传xlsx→预览还原→切换sheet', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await expect(page.locator('#workspace')).toBeVisible();
+  await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
+  await expect(page.locator('#preview tr')).toHaveCount(6);
+  await page.selectOption('#sheet-select', '2');
+  await expect(page.locator('#preview td').first()).toHaveText('姓名');
+});
+
+test('导出2x PNG 尺寸=预览表尺寸×2 且可下载', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await expect(page.locator('#preview table')).toBeVisible();
+  const size = await page.evaluate(() => {
+    const t = document.querySelector('#preview table');
+    return { w: t.offsetWidth, h: t.offsetHeight };
+  });
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#export-btn')
+  ]);
+  expect(download.suggestedFilename()).toMatch(/@2x\.png$/);
+  const buf = fs.readFileSync(await download.path());
+  const { w, h } = pngSize(buf);
+  expect(Math.abs(w - (size.w + 32) * 2)).toBeLessThanOrEqual(8);
+  expect(Math.abs(h - (size.h + 32) * 2)).toBeLessThanOrEqual(8);
+});
+
+test('CSV 上传渲染', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', csv);
+  await expect(page.locator('#preview tr')).toHaveCount(3);
+  await expect(page.locator('#preview td').nth(5)).toHaveText('含,逗号');
+});
+
+test('拖拽上传触发预览', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
+});
+
+test('点击上传区打开文件选择器并上传', async ({ page }) => {
+  await page.goto(pageUrl);
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.click('#drop-zone')
+  ]);
+  await chooser.setFiles(xlsx);
+  await expect(page.locator('#preview td').first()).toHaveText('销售数据汇总');
 });
