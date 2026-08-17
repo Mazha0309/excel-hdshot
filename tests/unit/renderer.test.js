@@ -152,7 +152,7 @@ test('单元格输出 data-r/data-c 定位属性', () => {
   assert.ok(html.includes('data-r="0" data-c="0"'));
 });
 
-test('空列占位格输出 data-c', () => {
+test('空列占位格输出 data-r/data-c', () => {
   const sparseSheet = {
     name: 's',
     rows: [{ height: null, cells: [
@@ -164,5 +164,5 @@ test('空列占位格输出 data-c', () => {
     cellCount: 2
   };
   const html = renderer.renderSheet(sparseSheet);
-  assert.ok(html.includes('<td data-c="1"></td>'));
+  assert.ok(html.includes('<td data-r="0" data-c="1"></td>'));
 });

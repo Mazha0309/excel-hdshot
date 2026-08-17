@@ -81,7 +81,7 @@
       html += '<tr' + (row.height ? ' style="height:' + row.height + 'px"' : '') + '>';
       for (let ci = 0; ci < row.cells.length; ci++) {
         const cell = row.cells[ci];
-        if (cell === null) { html += '<td data-c="' + ci + '"></td>'; continue; }
+        if (cell === null) { html += '<td data-r="' + ri + '" data-c="' + ci + '"></td>'; continue; }
         if (cell.hidden) continue;
         html += renderCell(cell, opts, ri, ci);
       }

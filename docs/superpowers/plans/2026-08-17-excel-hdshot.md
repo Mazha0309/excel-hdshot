@@ -1165,7 +1165,7 @@ Expected: FAIL — `Cannot find module '../../js/renderer.js'`
       html += '<tr' + (row.height ? ' style="height:' + row.height + 'px"' : '') + '>';
       for (let ci = 0; ci < row.cells.length; ci++) {
         const cell = row.cells[ci];
-        if (cell === null) { html += '<td data-c="' + ci + '"></td>'; continue; }
+        if (cell === null) { html += '<td data-r="' + ri + '" data-c="' + ci + '"></td>'; continue; }
         if (cell.hidden) continue;
         html += renderCell(cell, opts, ri, ci);
       }
@@ -1335,7 +1335,6 @@ main { padding: 16px 32px 40px; }
   border-radius: 10px;
   padding: 16px;
 }
-#preview table { background: #fff; }
 #toast {
   position: fixed;
   left: 50%;
@@ -1874,11 +1873,14 @@ Expected: 新增 3 个测试 FAIL（上传后 workspace 不显示）
     var v = +this.value;
     if (!(v > 0)) return;
     var sheet = state.sheets[+sheetSelect.value];
+    var maxCol = 0;
+    sheet.rows.forEach(function (r) { if (r.cells.length > maxCol) maxCol = r.cells.length; });
+    var size = Math.max(maxCol, state.sel.c + 1);
     if (!sheet.colWidths.length) {
-      sheet.colWidths = new Array(state.sel.c + 1).fill(59);
-    } else if (sheet.colWidths.length <= state.sel.c) {
+      sheet.colWidths = new Array(size).fill(59);
+    } else if (sheet.colWidths.length < size) {
       var old = sheet.colWidths;
-      sheet.colWidths = new Array(state.sel.c + 1).fill(59);
+      sheet.colWidths = new Array(size).fill(59);
       for (var i = 0; i < old.length; i++) if (old[i]) sheet.colWidths[i] = old[i];
     }
     sheet.colWidths[state.sel.c] = v;

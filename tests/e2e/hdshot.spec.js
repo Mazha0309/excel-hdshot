@@ -237,3 +237,24 @@ test('CSV上传后编辑列宽自动回填默认', async ({ page }) => {
   const colStyle = await page.locator('#preview col').first().getAttribute('style');
   expect(colStyle).toContain('width:150px');
 });
+
+test('CSV编辑列宽后右侧列保持默认宽度不塌陷', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', csv);
+  await page.locator('#preview td[data-c="0"]').first().click();
+  await page.fill('#col-width-input', '150');
+  await page.locator('#col-width-input').dispatchEvent('change');
+  const widths = await page.locator('#preview col').evaluateAll(cols => cols.map(c => c.style.width));
+  expect(widths).toEqual(['150px', '59px', '59px']);
+  await expect(page.locator('#preview td').nth(5)).toHaveText('含,逗号');
+});
+
+test('透明背景预览所见即所得', async ({ page }) => {
+  await page.goto(pageUrl);
+  await page.setInputFiles('#file-input', xlsx);
+  await page.selectOption('#bg-select', 'transparent');
+  const wrapBg = await page.locator('#preview .hs-wrap').evaluate(el => getComputedStyle(el).backgroundColor);
+  const tableBg = await page.locator('#preview table').evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(wrapBg).toBe('rgba(0, 0, 0, 0)');
+  expect(tableBg).toBe('rgba(0, 0, 0, 0)');
+});
